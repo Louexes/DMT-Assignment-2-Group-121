@@ -1,0 +1,12 @@
+artifacts/*
+!artifacts/.gitkeep
+
+outputs/*
+!outputs/.gitkeep
+
+Data/*
+!Data/.gitkeep
+
+__pycache__/
+*.pyc
+.DS_Store
