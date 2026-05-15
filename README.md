@@ -2,7 +2,7 @@
 
 | Submission | # features | Val NDCG@5 | Kaggle public LB |
 |---|---:|---:|---:|
-| **Full model** (`submission_v4_lgbm_only.csv`) | **131** | **0.4205** | **0.41995** |
+| **Full model** (`submission_lgbm_retuned.csv`) | **131** | **0.4205** | **0.42060** |
 | Minimal model (`submission_top_40.csv`) | 40 | 0.4121 | 0.41245 |
 
 Both are LightGBM LambdaRank models trained on the same engineered feature
@@ -41,13 +41,28 @@ python scripts/04_train_lightgbm.py      # ~13 min  — train full model
 python scripts/07_make_submission.py     # ~ 5 min  — write submission CSV
 ```
 
-Output: `outputs/submission_v4_lgbm_only.csv`. Submit via the Kaggle CLI to
-avoid manual-edit corruption:
+Output: `outputs/submission_lgbm_retuned.csv`. Submit via the Kaggle CLI
+to avoid manual-edit corruption:
 
 ```bash
 pip install kaggle
 kaggle competitions submit -c dmt-2026-2nd-assignment \
-  -f outputs/submission_v4_lgbm_only.csv -m ""
+  -f outputs/submission_lgbm_retuned.csv -m ""
+```
+
+Or run everything end-to-end with the orchestrator:
+
+```bash
+python scripts/run_all.py                # phases 1..7 in order
+python scripts/run_all.py --from-step 4  # resume mid-way (e.g. after a crash)
+```
+
+**Optional analyses.** EDA plots / summary stats and the bias detection +
+mitigation experiment have their own phase scripts:
+
+```bash
+python scripts/02_eda.py            # writes outputs/figures/* and eda_stats.json
+python scripts/06_bias_analysis.py  # pre/post group fairness on the val fold
 ```
 
 **Minimal-model variant.** After running the four commands above, also run:
@@ -78,20 +93,25 @@ reproduce/
 ├── src/
 │   ├── config.py                   # paths, hyperparameters, feature lists
 │   ├── data_io.py                  # CSV → Parquet conversion
+│   ├── eda.py                      # EDA plots + summary stats
 │   ├── features.py                 # feature engineering (bulk of the code)
 │   ├── lightgbm_train.py           # LambdaRank training helpers
 │   ├── ndcg.py                     # NDCG@k implementation (val metric)
+│   ├── bias.py                     # group-fairness metrics + reweighing
 │   ├── submission.py               # Kaggle CSV writer / verifier
 │   ├── rankformer.py               # secondary model — not in final pipeline
 │   └── rankformer_train.py
 ├── scripts/
 │   ├── 01_prepare_data.py          # CSV → Parquet
+│   ├── 02_eda.py                   # write outputs/figures/* and eda_stats.json
 │   ├── 03_build_features.py        # build labeled_feat / submit_feat
 │   ├── 04_train_lightgbm.py        # full 131-feature LightGBM
 │   ├── 04b_train_lgbm_subset.py    # any feature-subset LightGBM
 │   ├── 05_train_rankformer.py      # optional, not in final pipeline
+│   ├── 06_bias_analysis.py         # group fairness + reweighing rerun
 │   ├── 07_make_submission.py       # write Kaggle CSV from full model
-│   └── 07b_submit_subset.py        # write Kaggle CSV from subset model
+│   ├── 07b_submit_subset.py        # write Kaggle CSV from subset model
+│   └── run_all.py                  # phase orchestrator (1..7 in order)
 ├── Data/                           # ← put train.csv / test.csv here
 ├── artifacts/                      # ← parquets, model files (generated)
 └── outputs/                        # ← submission CSVs + metrics (generated)
@@ -330,10 +350,10 @@ $+0.13$ and validation NDCG@5 rose by $\approx 0.04$.
 
 | Model | # features | Val NDCG@5 | Kaggle public LB |
 |---|---|---|---|
-| Full | 131 | **0.4205** | **0.41995** |
+| Full | 131 | **0.4205** | **0.42060** |
 | Minimal (top-40 by gain) | 40 | 0.4121 | 0.41245 |
 
-The val-to-Kaggle gap is $\approx 0.0002$, confirming the $80/20$
+The val-to-Kaggle gap is $\approx +0.0001$, confirming the $80/20$
 group-aware split is well-calibrated.
 
 **Top-10 features (by gain, full model).** `prop_country_id` (11.6%),

@@ -36,9 +36,9 @@ def main() -> None:
     feat_cols = meta["features"]
     cat_cols = meta["categorical"]
 
-    # Sample paper §6 dropped RankFormer because GBDT outperformed it; we
-    # confirmed the same on our val set (LGBM 0.381 vs RF 0.367 vs ensemble
-    # 0.378). Submit LGBM-only scores.
+    # LightGBM-only submission. The retuned canonical config reaches val
+    # NDCG@5 = 0.4205. RankFormer (val 0.4127) is kept as the listwise
+    # neural baseline but not used in the submitted predictor.
     lgb_path = C.LGBM_MODEL
     print(f"[lgbm] using {lgb_path.name}")
     lgb_df = predict_lightgbm(feat_cols, lgb_path)
@@ -48,7 +48,7 @@ def main() -> None:
     merged["rank_ens"] = merged.groupby("srch_id", sort=False)["score_lgbm"].rank(
         ascending=False, method="average"
     )
-    out_path = C.OUT_DIR / "submission_v4_lgbm_only.csv"
+    out_path = C.OUT_DIR / "submission_lgbm_retuned.csv"
     submission.write_submission(merged, "rank_ens", out_path)
     print(f"[write] {out_path} ({out_path.stat().st_size/1024**2:.1f} MB)")
     chk = submission.verify_against_sample(out_path)

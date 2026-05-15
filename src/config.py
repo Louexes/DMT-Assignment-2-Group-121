@@ -35,6 +35,7 @@ FEATURE_LIST = ART_DIR / "feature_list.json"
 
 LGBM_MODEL = ART_DIR / "lightgbm.txt"
 LGBM_VAL_PREDS = ART_DIR / "lightgbm_val_preds.parquet"
+LGBM_DEBIAS_MODEL = ART_DIR / "lightgbm_debiased.txt"
 
 # RankFormer artefacts. The transformer ranker is included as a strong
 # secondary model. With the canonical config below (MLP per-item encoder,

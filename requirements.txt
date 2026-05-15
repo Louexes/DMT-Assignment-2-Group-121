@@ -4,6 +4,7 @@ numpy>=1.26
 scikit-learn>=1.5
 pyarrow>=13
 matplotlib>=3.9
+seaborn>=0.13
 
 # Optional — only needed if you want to train/run the secondary RankFormer
 # model (scripts/05_train_rankformer.py). Skip if you're only reproducing
