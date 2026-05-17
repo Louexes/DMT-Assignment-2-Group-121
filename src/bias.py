@@ -130,6 +130,7 @@ def compute_reweighing_weights(
 
 
 def write_bias_plot(pre: dict, post: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(7, 4))
     labels = ["chain", "independent", "overall"]
     pre_vals = [pre["chain"], pre["independent"], pre["overall"]]
