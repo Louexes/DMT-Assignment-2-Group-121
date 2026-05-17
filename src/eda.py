@@ -200,9 +200,21 @@ def run_all(df: pd.DataFrame) -> dict:
     return out
 
 
+def _jsonable(obj):
+    """Recursively coerce numpy scalars / dict keys into json-safe types."""
+    if isinstance(obj, dict):
+        return {_jsonable(k): _jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_jsonable(v) for v in obj]
+    if isinstance(obj, np.generic):
+        # numpy int8/int16/int32/float32/bool_ -> native python
+        return obj.item()
+    return obj
+
+
 def write_summary(stats: dict) -> Path:
     C.OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = C.OUT_DIR / "eda_stats.json"
     with open(path, "w") as f:
-        json.dump(stats, f, indent=2, default=str)
+        json.dump(_jsonable(stats), f, indent=2, default=str)
     return path

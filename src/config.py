@@ -35,15 +35,16 @@ FEATURE_LIST = ART_DIR / "feature_list.json"
 
 LGBM_MODEL = ART_DIR / "lightgbm.txt"
 LGBM_VAL_PREDS = ART_DIR / "lightgbm_val_preds.parquet"
+LGBM_SUBMIT_PREDS = ART_DIR / "lightgbm_submit_preds.parquet"
 LGBM_DEBIAS_MODEL = ART_DIR / "lightgbm_debiased.txt"
 
-# RankFormer artefacts. The transformer ranker is included as a strong
-# secondary model. With the canonical config below (MLP per-item encoder,
-# no positional embedding, cosine LR with warm restarts) it reaches val
-# NDCG@5 ≈ 0.413 — within ~0.007 of LightGBM. We still submit LightGBM as
-# the final predictor; RankFormer is kept for the methods write-up.
+# RankFormer artefacts. The transformer ranker is the second leg of our
+# final weighted ensemble (see scripts/07_make_submission.py). With the
+# canonical config (MLP per-item encoder, no positional embedding, cosine
+# LR with warm restarts) it reaches val NDCG@5 ≈ 0.413 on its own.
 RF_MODEL = ART_DIR / "rankformer.pt"
 RF_VAL_PREDS = ART_DIR / "rankformer_val_preds.parquet"
+RF_SUBMIT_PREDS = ART_DIR / "rankformer_submit_preds.parquet"
 
 SEED = 42
 
