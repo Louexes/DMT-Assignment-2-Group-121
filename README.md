@@ -2,12 +2,15 @@
 
 | Submission | # features | Val NDCG@5 | Kaggle public LB |
 |---|---:|---:|---:|
-| **Weighted ensemble** (`submission_ensemble_lgbm072_rf028.csv`) | **131** | **0.4232** | **0.42295** |
+| **Three-way weighted ensemble** (`submission_ensemble_v1055_v3020_rf025.csv`) | **131** | **0.4238** | **0.42355** |
 
-Per-srch_id min-max normalisation of LightGBM LambdaRank scores
-(val NDCG@5 = 0.4205) and RankFormer scores (val NDCG@5 = 0.413),
-linearly blended with $w_{\text{LGBM}} = 0.72$ and
-$w_{\text{RF}} = 0.28$. Both models share the same 131-feature input.
+Per-srch_id min-max normalisation of three rankers' scores — a primary
+LightGBM LambdaRank booster (val NDCG@5 = 0.4205), a second LightGBM
+booster at a different operating point and seed (val NDCG@5 = 0.4223),
+and a RankFormer transformer ranker (val NDCG@5 = 0.4127) — linearly
+blended with weights $w_{\text{v1}} = 0.55$, $w_{\text{v3}} = 0.20$,
+$w_{\text{rf}} = 0.25$. All three rankers share the same 131-feature
+input.
 
 ---
 
@@ -33,11 +36,12 @@ the `LABELED_CSV` / `SUBMIT_CSV` aliases at the top of `src/config.py`.
 **Reproduce the Kaggle submission** (run from this directory):
 
 ```bash
-python scripts/01_prepare_data.py        # ~ 3 min  — CSV → Parquet
-python scripts/03_build_features.py      # ~ 1 min  — engineer 131 features
-python scripts/04_train_lightgbm.py      # ~13 min  — train LightGBM LambdaRank
-python scripts/05_train_rankformer.py    # ~15 min  — train RankFormer (uses MPS)
-python scripts/07_make_submission.py     # ~13 min  — write ensemble submission
+python scripts/01_prepare_data.py         # ~ 3 min  — CSV → Parquet
+python scripts/03_build_features.py       # ~ 1 min  — engineer 131 features
+python scripts/04_train_lightgbm.py       # ~13 min  — train LightGBM v1
+python scripts/04b_train_lightgbm_v3.py   # ~14 min  — train LightGBM v3
+python scripts/05_train_rankformer.py     # ~15 min  — train RankFormer (uses MPS)
+python scripts/07_make_submission.py      # ~14 min  — write ensemble submission
 ```
 
 If you don't have a CUDA / Apple-Silicon MPS device available, the
@@ -45,20 +49,21 @@ RankFormer step works on CPU too but takes substantially longer
 (~40 min). The `torch>=2.5` dependency in `requirements.txt` is only
 needed for that step.
 
-Output: `outputs/submission_ensemble_lgbm072_rf028.csv`. Submit via the
-Kaggle CLI to avoid manual-edit corruption:
+Output: `outputs/submission_ensemble_v1055_v3020_rf025.csv`. Submit via
+the Kaggle CLI to avoid manual-edit corruption:
 
 ```bash
 pip install kaggle
 kaggle competitions submit -c dmt-2026-2nd-assignment \
-  -f outputs/submission_ensemble_lgbm072_rf028.csv -m ""
+  -f outputs/submission_ensemble_v1055_v3020_rf025.csv -m ""
 ```
 
 Or run everything end-to-end with the orchestrator:
 
 ```bash
-python scripts/run_all.py                # phases 1..7 in order
-python scripts/run_all.py --from-step 4  # resume mid-way (e.g. after a crash)
+python scripts/run_all.py                  # phases 1..7 in order
+python scripts/run_all.py --from-step 4    # resume mid-way (e.g. after a crash)
+python scripts/run_all.py --skip 4b        # skip the v3 booster
 ```
 
 **Optional analyses.** EDA plots / summary stats and the bias detection +
@@ -78,7 +83,7 @@ reproduce/
 ├── README.md                       # this file
 ├── requirements.txt
 ├── src/
-│   ├── config.py                   # paths, hyperparameters, feature lists
+│   ├── config.py                   # paths, hyperparameters, feature lists, blend weights
 │   ├── data_io.py                  # CSV → Parquet conversion
 │   ├── eda.py                      # EDA plots + summary stats
 │   ├── features.py                 # feature engineering (bulk of the code)
@@ -92,10 +97,11 @@ reproduce/
 │   ├── 01_prepare_data.py          # CSV → Parquet
 │   ├── 02_eda.py                   # write outputs/figures/* and eda_stats.json
 │   ├── 03_build_features.py        # build labeled_feat / submit_feat
-│   ├── 04_train_lightgbm.py        # train LightGBM LambdaRank
+│   ├── 04_train_lightgbm.py        # train LightGBM v1 (primary)
+│   ├── 04b_train_lightgbm_v3.py    # train LightGBM v3 (diverse operating point)
 │   ├── 05_train_rankformer.py      # train RankFormer (uses MPS / CUDA)
-│   ├── 06_bias_analysis.py         # group fairness + reweighing
-│   ├── 07_make_submission.py       # write the ensemble Kaggle CSV
+│   ├── 06_bias_analysis.py         # group fairness + reweighing (LGBM and ensemble)
+│   ├── 07_make_submission.py       # write the three-way ensemble Kaggle CSV
 │   └── run_all.py                  # phase orchestrator (1..7 in order)
 ├── Data/                           # ← put train.csv / test.csv here
 ├── artifacts/                      # ← parquets, model files (generated)
@@ -103,10 +109,10 @@ reproduce/
 ```
 
 **Notes.** Deterministic given `SEED=42` (same train/val split, fold
-assignment, booster init, RankFormer init). Total wall-clock on a 2024
-M3 MacBook Pro: ~45 min end-to-end. If LightGBM training hangs at
-0% CPU on macOS, set `OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
-OPENBLAS_NUM_THREADS=1` before running.
+assignment, booster init, RankFormer init). LGBM v3 uses its own seed
+of 99. Total wall-clock on a 2024 M3 MacBook Pro: ~60 min end-to-end.
+If LightGBM training hangs at 0% CPU on macOS, set `OMP_NUM_THREADS=1
+MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1` before running.
 
 The submission script uses `num_threads=8` for LightGBM predict
 explicitly, so you can additionally export `OMP_NUM_THREADS=1` to keep
@@ -158,12 +164,14 @@ Per-source notes on what each reference contributes and how we use it.
   one of our position proxies.*
 - **Ke et al. [10]** — LightGBM. Library that provides LambdaRank,
   native missing-value handling, and explicit categorical features.
-  *Our primary modelling tool.*
+  *Our primary modelling tool. We train two LightGBM boosters at
+  different operating points; both contribute to the final ensemble.*
 - **Buyl et al. [5]** — RankFormer. Listwise transformer ranker.
-  *Trained as the second leg of our ensemble; with an MLP per-item
+  *Trained as the third leg of our ensemble; with an MLP per-item
   encoder, no positional embedding, and cosine LR with warm restarts
-  it reaches $0.413$ on validation. Blended at $0.28$ weight with
-  LightGBM, it adds $+0.003$ over the GBDT alone.*
+  it reaches $0.4127$ on validation. Blended at $0.25$ weight, it
+  contributes residual independence that neither LightGBM booster
+  captures.*
 - **Huang et al. [6]** — TabTransformer. Background reference for
   transformer-based tabular models; motivates evaluating a transformer
   reranker.
@@ -211,25 +219,33 @@ otherwise.
 
 ## 4. Model Choices
 
-Our final predictor is a per-srch_id min-max blended ensemble of two
-rankers, both trained on the same $131$-feature input.
+Our final predictor is a per-srch_id min-max blended ensemble of three
+rankers, all trained on the same $131$-feature input. The two model
+*families* required by the assignment are LightGBM LambdaRank and a
+listwise transformer (RankFormer); within the LightGBM family we train
+two boosters at different operating points to add intra-family diversity.
 
-**LightGBM LambdaRank.** Tree paths act as interaction rules, the model
-is scale-invariant, and it handles missing values natively (important
-on a dataset where missingness is informative).
+**LightGBM LambdaRank (two boosters).** Tree paths act as interaction
+rules, the model is scale-invariant, and it handles missing values
+natively (important on a dataset where missingness is informative). The
+second booster ("v3") is run with more capacity per tree, weaker
+`min_data_in_leaf`, and a different seed, then regularised harder
+through `lambda_l2` and `path_smooth` — predictions that correlate
+with v1 but are not identical, which makes the blend additive.
 
 **RankFormer.** Session-level transformer ranker. The attention layers
 let each candidate's score depend on the other candidates in the same
-query, complementing the GBDT's pointwise tree structure. Continuous
-features need standardisation and missingness needs explicit handling,
-but the listwise inductive bias picks up signal the GBDT misses.
+query, complementing the two GBDTs' pointwise tree structure.
+Continuous features need standardisation and missingness needs explicit
+handling, but the listwise inductive bias picks up signal the GBDTs
+miss.
 
 ---
 
 ## 5. Data Preparation
 
 **Split.** $80/20$ group-aware split along `srch_id`, fixed seed,
-shared between LightGBM and RankFormer.
+shared between all three rankers.
 
 ### 5.1 Transformations
 
@@ -284,12 +300,13 @@ Final feature count: $131$ model inputs.
 
 ## 6. Modeling
 
-### 6.1 LightGBM GBDT
+### 6.1 LightGBM v1 (primary booster)
 
 The LambdaRank objective is optimised with the hyperparameters in
-Table 1.
+Table 1. This is the lighter operating point — small leaves, heavy
+path-smoothing, conservative learning rate.
 
-**Table 1.** LightGBM hyperparameters.
+**Table 1.** LightGBM v1 hyperparameters.
 
 | Parameter | Value | Parameter | Value | Parameter | Value |
 |---|---|---|---|---|---|
@@ -297,8 +314,28 @@ Table 1.
 | learning_rate | 0.012 | bagging_fraction | 0.65 | lambda_l2 | 12 |
 | num_leaves | 72 | bagging_freq | 4 | path_smooth | 1.5 |
 | max_depth | 8 | min_data_in_leaf | 80 | early_stopping | 300 |
+| seed | 42 | | | | |
 
-### 6.2 RankFormer
+### 6.2 LightGBM v3 (diverse second booster)
+
+Same objective, different operating point: more capacity per tree
+(`num_leaves=128`, `max_depth=10`, `min_data_in_leaf=50`) and a
+different seed, regularised through a much stronger `lambda_l2 = 25`
+and `path_smooth = 2.5`. Standalone val NDCG@5 = $0.4223$. The
+booster's predictions correlate with v1 but are not identical, which is
+what makes the blend additive.
+
+**Table 2.** LightGBM v3 hyperparameters.
+
+| Parameter | Value | Parameter | Value | Parameter | Value |
+|---|---|---|---|---|---|
+| n_estimators | 10000 | feature_fraction | 0.55 | lambda_l1 | 0 |
+| learning_rate | 0.012 | bagging_fraction | 0.75 | lambda_l2 | 25 |
+| num_leaves | 128 | bagging_freq | 5 | path_smooth | 2.5 |
+| max_depth | 10 | min_data_in_leaf | 50 | early_stopping | 300 |
+| seed | 99 | | | | |
+
+### 6.3 RankFormer
 
 Per-item encoder: a two-layer MLP over standardised numeric features
 ($n_\text{num} \to 2 d_\text{model} \to d_\text{model}$ with GELU and
@@ -314,43 +351,47 @@ restarts (peak $\text{lr} = 6 \cdot 10^{-4}$, decaying to $0$ at the
 end of each half), $12$ epochs total. Loss is ListNet cross-entropy
 plus a pairwise hinge ($\lambda = 0.3$) on book-vs-non-book pairs.
 
-### 6.3 Ensemble
+### 6.4 Ensemble
 
-The two models are blended at score level. For each query, both score
-columns are linearly rescaled to $[0, 1]$ by min-max normalisation
-within that `srch_id`, putting the two heterogeneous score scales on a
+The three models are blended at score level. For each query, each score
+column is linearly rescaled to $[0, 1]$ by min-max normalisation within
+that `srch_id`, putting the three heterogeneous score scales on a
 common axis. The final score is
 
 $$
-s_{\text{ens}}(i) = w_{\text{LGBM}} \cdot \tilde{s}_{\text{LGBM}}(i)
-                  + (1 - w_{\text{LGBM}}) \cdot \tilde{s}_{\text{RF}}(i),
+s_{\text{ens}}(i) = w_{\text{v1}} \cdot \tilde{s}_{\text{v1}}(i)
+                  + w_{\text{v3}} \cdot \tilde{s}_{\text{v3}}(i)
+                  + w_{\text{rf}} \cdot \tilde{s}_{\text{rf}}(i),
 $$
 
-with $w_{\text{LGBM}} = 0.72$. The weight was chosen by sweeping $w$
-on the held-out validation fold (the curve is flat on the interval
-$[0.65, 0.75]$; the peak is at $0.72$).
+with $(w_{\text{v1}}, w_{\text{v3}}, w_{\text{rf}}) = (0.55,\,0.20,\,0.25)$.
+The weights were chosen by a grid sweep on the held-out validation
+fold subject to the constraint $w_{\text{v1}} \ge w_{\text{v3}}$ and
+$w_{\text{rf}} \in [0.10, 0.40]$; the surface is flat in a small
+neighbourhood of the optimum.
 
 ---
 
 ## 7. Evaluation
 
-LightGBM alone scores $0.4205$ NDCG@5 on validation; RankFormer alone
-scores $0.4127$. Per-query min-max blending with $w_{\text{LGBM}} =
-0.72$ reaches $0.4232$ — a $+0.0027$ lift over the GBDT alone. The
-two rankers are not perfectly redundant on this dataset: the
-transformer's listwise scores still carry independent information
-within each query.
+LightGBM v1 alone scores $0.4205$ NDCG@5 on validation; LightGBM v3
+alone scores $0.4223$; RankFormer alone scores $0.4127$. Per-query
+min-max blending with the weights $(0.55,\,0.20,\,0.25)$ reaches
+$0.4238$ — a $+0.0015$ lift over the better LightGBM alone, and a
+$+0.0033$ lift over the primary booster. The three rankers are not
+perfectly redundant on this dataset: each carries independent
+information within each query.
 
-**Table 2.** Submission.
+**Table 3.** Submission.
 
 | Model | # features | Val NDCG@5 | Kaggle public LB |
 |---|---|---|---|
-| **Ensemble** ($w_{\text{LGBM}}=0.72$) | 131 | **0.4232** | **0.42295** |
+| **Ensemble** ($w_{\text{v1}}=0.55,\,w_{\text{v3}}=0.20,\,w_{\text{rf}}=0.25$) | 131 | **0.4238** | **0.42355** |
 
 The val-to-Kaggle gap is $\approx -0.0002$ — close to zero,
 confirming that the $80/20$ group-aware split is well-calibrated.
 
-**Top-10 LightGBM features (by gain).** `prop_country_id` (11.6%),
+**Top-10 LightGBM v1 features (by gain).** `prop_country_id` (11.6%),
 `visitor_location_country_id` (10.1%), `prop_te` (5.5%),
 `recent_price_delta` (5.4%), `prop_location_score2` (4.9%),
 `loc2_over_loc1` (3.0%), `random_bool` (2.5%),
@@ -373,13 +414,17 @@ dataset. After replacing the leaky encoding with $k$-fold OOF, the
 training NDCG@5 dropped (the model could no longer memorise) and
 validation rose by $\approx 0.04$.
 
-**RankFormer vs.\ LightGBM.** Individually, the GBDT outscores the
-transformer ($0.4205$ vs.\ $0.4127$ on validation), as is typical on
-tabular data with strong hand-crafted features. The transformer's
-score is high enough relative to the GBDT, however, that a weighted
-blend with $w_{\text{LGBM}} = 0.72$ adds $+0.0027$ over the GBDT
-alone — the two rankers' errors are correlated but not identical,
-and the residual independence is worth ensembling.
+**Why three rankers and not two.** Individually, the two GBDTs both
+outscore the transformer ($0.4205$ / $0.4223$ vs.\ $0.4127$ on
+validation), as is typical on tabular data with strong hand-crafted
+features. Each, however, makes errors the others do not: the two
+LightGBM boosters disagree on borderline candidates because they were
+trained with different capacity and a different seed, and the
+transformer's listwise attention adds a *different* axis of disagreement
+because it scores each candidate conditional on the rest of the list.
+The weighted blend with $(0.55,\,0.20,\,0.25)$ adds $+0.0015$ over the
+better LightGBM alone — the three rankers' errors are correlated but
+not identical, and the residual independence is worth ensembling.
 
 **Remaining gap.** The top of the public leaderboard sits about
 $0.005$–$0.007$ NDCG@5 above us. Inspection of feature importances
@@ -403,33 +448,52 @@ The two groups are roughly balanced ($\approx 67\%$ chain).
 3. Chain share in the top $5$ vs.\ chain share among bookings
    ($\approx 63.3\%$).
 
-**Mitigation.** Prevalence-based instance re-weighting:
+**Mitigation.** Prevalence-based instance re-weighting on the
+LightGBM v1 training set:
 $w = 1/p_{\text{book}}(g)$ for booked rows of group $g$, $0.5 /
 p_{\text{book}}(g)$ for click-only rows, $1$ otherwise.
 Booked-independent rows get the heaviest weight ($\approx 38.7$) since
 independent-hotel bookings are rarer.
 
-**Results.** Bias is measured against the LightGBM leg of the ensemble
-(reweighing applies at training time and is a LightGBM-specific
-intervention).
+**Results.** We evaluate fairness on the deployed model — the
+three-way ensemble — so that the bias numbers describe what actually
+ships. Pre-mitigation uses the unweighted LightGBM v1 leg; post-mitigation
+swaps in the reweighed (debiased) v1 leg, leaving the LightGBM v3 and
+RankFormer legs unchanged.
+
+**Table 4.** Bias on the deployed ensemble (LGBM v1 + v3 + RF).
+
+| Metric | Pre | Post | Δ |
+|---|---|---|---|
+| Overall NDCG@5 | 0.4238 | 0.4200 | −0.0038 |
+| NDCG@5, chain | 0.4563 | 0.4521 | −0.0042 |
+| NDCG@5, indep | 0.4541 | 0.4505 | −0.0036 |
+| **NDCG@5 gap (chain − indep)** | **+0.0022** | **+0.0017** | **−0.0005** |
+| Mean-rank gap (indep − chain) | +0.083 | −0.025 | −0.108 |
+| Chain share in top-5 vs base | +1.1pp | +0.7pp | −0.4pp |
+
+The ensemble is already close to group-fair before any intervention:
+the NDCG@5 gap is only $+0.0022$. RankFormer is partly responsible —
+its listwise scoring is less biased than the GBDT alone on this
+dataset, so adding it to the blend halves the inherent disparity of
+LightGBM-alone (Table 5). Reweighing the LightGBM v1 leg of the
+ensemble further tightens the NDCG gap to $+0.0017$, flips the
+rank-gap sign so independents are no longer ranked worse on average,
+and reduces the top-5 over-representation of chains. The cost is
+$0.0038$ NDCG@5 — substantially smaller than the $0.017$ cost
+incurred when LightGBM is the whole model.
+
+**Table 5.** For comparison: bias on LightGBM v1 alone.
 
 | Metric | Pre | Post | Δ |
 |---|---|---|---|
 | Overall NDCG@5 | 0.4205 | 0.4037 | −0.0168 |
-| NDCG@5, chain | 0.4531 | 0.4331 | −0.0200 |
-| NDCG@5, indep | 0.4488 | 0.4346 | −0.0142 |
 | **NDCG@5 gap** | **+0.0043** | **−0.0015** | **−0.0058** |
-| Mean-rank gap (chain − indep) | −0.12 | +0.14 | +0.26 |
-| Chain share in top-5 | 64.4% | 63.4% | −1.0pp |
+| Mean-rank gap (indep − chain) | +0.116 | −0.141 | −0.257 |
 
-All three fairness metrics improve simultaneously: the NDCG gap is
-essentially closed (slightly over-corrected to $-0.002$), the rank gap
-flips sign (mild over-correction in favour of independents), and the
-top-$5$ share matches the booking baseline. The cost is $0.017$
-NDCG@5 overall — the textbook fairness/utility trade-off. The Kaggle
-submission uses the un-weighted booster because the competition is
-graded on NDCG@5 alone; the debiased model is kept as an analytical
-artefact.
+The Kaggle submission uses the un-weighted ensemble because the
+competition is graded on NDCG@5 alone; the debiased booster is kept as
+an analytical artefact.
 
 ---
 
@@ -440,10 +504,10 @@ A production deployment would need:
 - **Storage.** Distributed object storage (e.g., Amazon S3 [1]) with
   hot data cached on serving nodes.
 - **Training.** Two parallelism axes — data parallelism within each
-  model (LightGBM and RankFormer can train concurrently on the same
-  feature matrix), and HP parallelism across runs.
-- **Serving.** The two ranker scores can be computed in parallel and
-  combined by a thin blend service. The LightGBM booster runs on CPU;
+  model (the LightGBM boosters and RankFormer can train concurrently
+  on the same feature matrix), and HP parallelism across runs.
+- **Serving.** The three ranker scores can be computed in parallel and
+  combined by a thin blend service. The LightGBM boosters run on CPU;
   the RankFormer transformer runs on a small GPU or on CPU with
   per-query batching. Feature retrieval is usually the bottleneck.
 - **Refresh.** Blue–green deployment on Kubernetes: spin up new
@@ -457,11 +521,16 @@ A production deployment would need:
 - **Diagnose leakage before adding features.** The largest single win
   came from realising a smoothed per-property CTR included each row's
   own label. The diagnostic was a train/validation gain mismatch.
-- **Ensembling pays even when one model is clearly weaker.** The
-  transformer scored $0.008$ below LightGBM on its own, yet a
-  per-query weighted blend gave $+0.003$ over the GBDT alone — the
-  residual independence between the two rankers is worth more than
-  the gap to the better model.
+- **Ensembling pays even within a model family.** The two LightGBM
+  boosters score within $0.002$ NDCG@5 of each other but contribute
+  $\approx 0.001$ over the better of the two in the blend — different
+  operating points on the same algorithm leave enough residual
+  independence to be worth combining.
+- **Listwise scoring helps fairness.** Adding the RankFormer leg to
+  the blend halved the inherent group-NDCG gap relative to the LightGBM
+  alone, and made the subsequent reweighing mitigation much cheaper in
+  NDCG terms — its listwise attention does not lock in the chain-vs-
+  independent disparity that the GBDT inherits from the data.
 - **Choose a sensible sensitive attribute.** High-cardinality
   attributes (e.g., user country) leave per-group estimates too noisy
   for re-weighting to help. A clean low-cardinality binary makes the

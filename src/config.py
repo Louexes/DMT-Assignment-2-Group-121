@@ -33,18 +33,30 @@ SUBMIT_FEAT = ART_DIR / "submit_feat.parquet"
 PROP_HIST = ART_DIR / "prop_history.parquet"
 FEATURE_LIST = ART_DIR / "feature_list.json"
 
+# Two LightGBM operating points contribute to the ensemble:
+#   v1 — the primary booster (small leaves, heavy path-smoothing).
+#   v3 — a second booster with more capacity per tree and a different seed,
+#        decorrelated from v1 enough to add ensemble lift.
 LGBM_MODEL = ART_DIR / "lightgbm.txt"
 LGBM_VAL_PREDS = ART_DIR / "lightgbm_val_preds.parquet"
 LGBM_SUBMIT_PREDS = ART_DIR / "lightgbm_submit_preds.parquet"
 LGBM_DEBIAS_MODEL = ART_DIR / "lightgbm_debiased.txt"
+LGBM_V3_MODEL = ART_DIR / "lightgbm_v3.txt"
+LGBM_V3_VAL_PREDS = ART_DIR / "lightgbm_v3_val_preds.parquet"
+LGBM_V3_SUBMIT_PREDS = ART_DIR / "lightgbm_v3_submit_preds.parquet"
 
-# RankFormer artefacts. The transformer ranker is the second leg of our
+# RankFormer artefacts. The transformer ranker is the third leg of our
 # final weighted ensemble (see scripts/07_make_submission.py). With the
 # canonical config (MLP per-item encoder, no positional embedding, cosine
 # LR with warm restarts) it reaches val NDCG@5 ≈ 0.413 on its own.
 RF_MODEL = ART_DIR / "rankformer.pt"
 RF_VAL_PREDS = ART_DIR / "rankformer_val_preds.parquet"
 RF_SUBMIT_PREDS = ART_DIR / "rankformer_submit_preds.parquet"
+
+# Ensemble blend weights (per-srch_id min-max normalised scores).
+ENS_W_LGBM_V1 = 0.55
+ENS_W_LGBM_V3 = 0.20
+ENS_W_RF = 0.25
 
 SEED = 42
 
@@ -125,6 +137,32 @@ LGBM_PARAMS = {
 }
 LGBM_NUM_BOOST = 10000
 LGBM_EARLY_STOP = 300
+
+# LightGBM v3 — a second operating point used in the final ensemble.
+# Different seed and more capacity per tree (deeper, more leaves, weaker
+# min_data_in_leaf) with stronger lambda_l2 + path_smooth as the trade-off.
+# Predictions are decorrelated enough from v1 to add an ensemble lift
+# without losing much on its own (val NDCG@5 ≈ 0.4223 standalone).
+LGBM_V3_PARAMS = {
+    "objective": "lambdarank",
+    "metric": "ndcg",
+    "eval_at": [5, 10],
+    "lambdarank_truncation_level": 5,
+    "learning_rate": 0.012,
+    "num_leaves": 128,
+    "max_depth": 10,
+    "min_data_in_leaf": 50,
+    "feature_fraction": 0.55,
+    "bagging_fraction": 0.75,
+    "bagging_freq": 5,
+    "lambda_l1": 0.0,
+    "lambda_l2": 25.0,
+    "path_smooth": 2.5,
+    "verbose": -1,
+    "seed": 99,
+    "deterministic": True,
+    "force_col_wise": True,
+}
 
 # RankFormer hyperparameters. Canonical config — reaches val NDCG@5 ≈ 0.413.
 # Key choices: (i) 2-layer MLP per-item encoder so the transformer sees
